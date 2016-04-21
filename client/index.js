@@ -14,13 +14,13 @@ var units = {
 };
 
 function mm(val) {
-  return (val * units.mm).toFixed();
+  return parseInt((val * units.mm).toFixed());
 }
 
 var scene = new THREE.Scene();
 var width = window.innerWidth;
 var height = window.innerHeight;
-var camera = new THREE.OrthographicCamera(width / - 2, width / 2, height / 2, height / - 2, -1000, 1000);
+var camera = new THREE.OrthographicCamera(width / - 2, width / 2, height / 2, height / - 2, -2000, 2000);
 camera.zoom = 0.5;
 
 window.camera = camera;
@@ -34,12 +34,15 @@ var gridHelper = new THREE.GridHelper( size, step );
 //scene.add( gridHelper );
 
 
-var ambient = new THREE.AmbientLight(0xffffff);
+var ambient = new THREE.AmbientLight(0x404040);
   scene.add(ambient);
 
-  //var light = new THREE.DirectionalLight(0xffffff);
-  //light.position = camera.position;
-  //scene.add(light);
+  var light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(100, 100, 50);
+  scene.add(light);
+
+  var hemLight = new THREE.HemisphereLight(0xffe5bb, 0xFFBF00, .1);
+scene.add(hemLight);
 
 
 
@@ -108,11 +111,18 @@ if(hash) {
 
 //this.mesh.rotation.x = 20 * Math.PI / 180;
 
-
+var inchToMetric = 25.4;
 var plate = new Plate(mm(102), mm(127), mm(2.4));
+var plateHolder = new PlateHolder(plate, {
+  border: mm(5),
+  inset: mm(2.5),
+  apetureBorder: mm(3),
+  mountHole: mm((13/64) * inchToMetric)
+});
 
 window.plate = plate;
 scene.add(plate.mesh);
+scene.add(plateHolder.mesh);
 
 //camera.up.set(new THREE.Vector3(0, 1, 0));
 camera.lookAt(scene.position);
@@ -145,13 +155,39 @@ function Plate(width, height, thickness) {
 }
 
 function PlateHolder(plate, config) {
-  var thickness = (plate.thickness + (config.inset * 2)) * 2;
-  this.csg = CSG.cube({
+  var thickness = (plate.thickness + (config.inset * 2)) * 2
+  var csg = CSG.cube({
     center: [0, 0, 0],
     radius: [(plate.width + config.border) / 2, (plate.height + config.border) / 2, thickness / 2]
   });
 
+  var apeture = CSG.cube({
+    center: [0, 0, 0],
+    radius: [(plate.width - config.apetureBorder) / 2, (plate.height - config.apetureBorder) / 2, thickness / 2]
+  });
+
+  var plateInset = CSG.cube({
+    center: [0, 0, 0],
+    radius: [(plate.width + config.inset) / 2, (plate.height + config.inset) / 2, (plate.thickness + config.inset) / 2]
+  });
+
+  var mount = CSG.cube({
+    center: [(plate.width + config.border) / 2 + thickness / 2, 0, 0],
+    radius: [thickness / 2, (plate.height + config.border) / 2, thickness / 2]
+  });
+
+  var opening = CSG.cube({
+    center: [-(plate.width + config.border) / 2, 0, 0],
+    radius: [thickness / 2, (plate.height + config.border) / 2, (plate.thickness + config.inset) / 2]
+  });
+
+  var c = CSG.cylinder({ radius: config.mountHole, start: [0, 0, -(thickness / 2)], end: [0, 0, thickness / 2] });
+
+  this.csg = csg.subtract(apeture).subtract(plateInset).union(mount).subtract(opening).union(c);
+
   this.geometry = THREE.CSG.fromCSG(this.csg);
+  this.material = new THREE.MeshLambertMaterial({ color: 0xffffff, wireframe: false });
+  this.mesh = new THREE.Mesh(this.geometry, this.material);
 
   this.inset = config.inset;
   this.border = config.border;
