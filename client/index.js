@@ -24,15 +24,48 @@ var camera = new THREE.OrthographicCamera(width / - 2, width / 2, height / 2, he
 camera.zoom = 0.5;
 
 window.camera = camera;
+
+var gridHelper = new THREE.GridHelper( mm(200), mm(5) );
+gridHelper.setColors(0xff0000, 0x666666);
+gridHelper.rotation.x = 90 * Math.PI / 180;
+scene.add( gridHelper );
+
 //The X axis is red. The Y axis is green. The Z axis is blue.
-var axisHelper = new THREE.AxisHelper( 500 );
-scene.add( axisHelper );
+function buildAxes(length) {
+  var axes = new THREE.Object3D();
 
-var size = 500;
-var step = 50;
-var gridHelper = new THREE.GridHelper( size, step );
-//scene.add( gridHelper );
+  axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( length, 0, 0 ), 0xFF0000, false ) ); // +X
+  axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( -length, 0, 0 ), 0xFF0000, true) ); // -X
+  axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, length, 0 ), 0x00FF00, false ) ); // +Y
+  axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, -length, 0 ), 0x00FF00, true ) ); // -Y
+  axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, length ), 0x0000FF, false ) ); // +Z
+  axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, -length ), 0x0000FF, true ) ); // -Z
 
+  return axes;
+}
+
+function buildAxis(src, dst, colorHex, dashed) {
+  var geom = new THREE.Geometry(),
+      mat;
+
+  var d = 4;
+  if(dashed) {
+    mat = new THREE.LineDashedMaterial({ linewidth: 3, color: colorHex, dashSize: 3*d, gapSize: 3*d });
+  } else {
+    mat = new THREE.LineBasicMaterial({ linewidth: 3, color: colorHex });
+  }
+
+  geom.vertices.push( src.clone() );
+  geom.vertices.push( dst.clone() );
+  geom.computeLineDistances();
+
+  var axis = new THREE.Line( geom, mat, THREE.LinePieces );
+
+  return axis;
+}
+
+var axes = buildAxes( 1000 );
+scene.add( axes );
 
 var ambient = new THREE.AmbientLight(0x404040);
   scene.add(ambient);
@@ -181,9 +214,10 @@ function PlateHolder(plate, config) {
     radius: [thickness / 2, (plate.height + config.border) / 2, (plate.thickness + config.inset) / 2]
   });
 
-  var c = CSG.cylinder({ radius: config.mountHole, start: [0, 0, -(thickness / 2)], end: [0, 0, thickness / 2] });
+  var mountingHoles  = [];
+  var c = CSG.cylinder({ radius: config.mountHole / 2, start: [(plate.width + config.border) / 2 + (thickness / 2) - (config.mountHole / 2), 0, -(thickness / 2)], end: [(plate.width + config.border) / 2 + (thickness / 2) - (config.mountHole / 2), 0, thickness / 2] });
 
-  this.csg = csg.subtract(apeture).subtract(plateInset).union(mount).subtract(opening).union(c);
+  this.csg = csg.subtract(apeture).subtract(plateInset).union(mount).subtract(opening).subtract(c);
 
   this.geometry = THREE.CSG.fromCSG(this.csg);
   this.material = new THREE.MeshLambertMaterial({ color: 0xffffff, wireframe: false });
