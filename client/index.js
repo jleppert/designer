@@ -21,6 +21,7 @@ var scene = new THREE.Scene();
 var width = window.innerWidth;
 var height = window.innerHeight;
 var camera = new THREE.OrthographicCamera(width / - 2, width / 2, height / 2, height / - 2, -2000, 2000);
+
 camera.zoom = 0.5;
 
 window.camera = camera;
@@ -28,7 +29,7 @@ window.camera = camera;
 var gridHelper = new THREE.GridHelper( mm(200), mm(5) );
 gridHelper.setColors(0xff0000, 0x666666);
 gridHelper.rotation.x = 90 * Math.PI / 180;
-scene.add( gridHelper );
+//scene.add( gridHelper );
 
 //The X axis is red. The Y axis is green. The Z axis is blue.
 function buildAxes(length) {
@@ -88,19 +89,6 @@ camera.position.z = 1;
 camera.position.x = 0;
 camera.position.y = 0;
 
-var controls = new THREE.OrthographicTrackballControls(camera);
-controls.addEventListener('end', function() {
-
-  var state = {
-    p: camera.position.toArray(),
-    r: camera.rotation.toArray(),
-    u: camera.up.toArray(),
-    z: camera.zoom
-  };
-
-  window.history.pushState({ position: camera.position.clone(), rotation: camera.rotation.clone(), up: camera.up.clone(), zoom: camera.zoom }, "", "/#" + JSON.stringify(state));
-});
-
 window.onpopstate = function(event) {
   if(event.state && event.state.position) {
     camera.position.x = event.state.position.x;
@@ -145,20 +133,37 @@ if(hash) {
 //this.mesh.rotation.x = 20 * Math.PI / 180;
 
 var inchToMetric = 25.4;
-var plate = new Plate(mm(102), mm(127), mm(2.4));
+var plate = new Plate(mm(127), mm(102), mm(2.4));
 var plateHolder = new PlateHolder(plate, {
-  border: mm(5),
-  inset: mm(2.5),
+  border: mm(10),
+  inset: mm(1),
   apetureBorder: mm(3),
-  mountHole: mm((13/64) * inchToMetric)
+  mountHole: mm((13/64) * inchToMetric),
+  thickness: 3.5
 });
 
 window.plate = plate;
-scene.add(plate.mesh);
+//scene.add(plate.mesh);
 scene.add(plateHolder.mesh);
 
 //camera.up.set(new THREE.Vector3(0, 1, 0));
 camera.lookAt(scene.position);
+
+var controls = new THREE.OrthographicTrackballControls(camera);
+controls.addEventListener('end', function() {
+
+  var state = {
+    p: camera.position.toArray(),
+    r: camera.rotation.toArray(),
+    u: camera.up.toArray(),
+    z: camera.zoom
+  };
+
+  window.history.pushState({ position: camera.position.clone(), rotation: camera.rotation.clone(), up: camera.up.clone(), zoom: camera.zoom }, "", "/#" + JSON.stringify(state));
+});
+
+
+
 function draw() {
 	requestAnimationFrame(draw);
   controls.update();
@@ -188,10 +193,10 @@ function Plate(width, height, thickness) {
 }
 
 function PlateHolder(plate, config) {
-  var thickness = (plate.thickness + (config.inset * 2)) * 2
+  var thickness = (plate.thickness + (config.inset * 2)) * config.thickness;
   var csg = CSG.cube({
     center: [0, 0, 0],
-    radius: [(plate.width + config.border) / 2, (plate.height + config.border) / 2, thickness / 2]
+    radius: [(plate.width + config.border + config.inset) / 2, (plate.height + config.border + config.inset) / 2, thickness / 2]
   });
 
   var apeture = CSG.cube({
@@ -200,24 +205,47 @@ function PlateHolder(plate, config) {
   });
 
   var plateInset = CSG.cube({
-    center: [0, 0, 0],
-    radius: [(plate.width + config.inset) / 2, (plate.height + config.inset) / 2, (plate.thickness + config.inset) / 2]
+    center: [0, 0, mm(5)],
+    radius: [(plate.width + config.inset) / 2, (plate.height + (config.inset * 2)) / 2, (plate.thickness + config.inset) / 2]
   });
 
   var mount = CSG.cube({
-    center: [(plate.width + config.border) / 2 + thickness / 2, 0, 0],
-    radius: [thickness / 2, (plate.height + config.border) / 2, thickness / 2]
+    center: [0, -(plate.height + config.border) / 2 + -thickness/2 + -config.inset/2, 0],
+    radius: [(plate.width + config.border + config.inset) / 2, thickness / 2, thickness / 2]
   });
 
   var opening = CSG.cube({
-    center: [-(plate.width + config.border) / 2, 0, 0],
-    radius: [thickness / 2, (plate.height + config.border) / 2, (plate.thickness + config.inset) / 2]
+    center: [0, (plate.height + config.border + config.inset) / 2, mm(5)],
+    radius: [(plate.width + config.border + config.inset) / 2, thickness / 2, (plate.thickness + config.inset) / 2]
   });
 
-  var mountingHoles  = [];
-  var c = CSG.cylinder({ radius: config.mountHole / 2, start: [(plate.width + config.border) / 2 + (thickness / 2) - (config.mountHole / 2), 0, -(thickness / 2)], end: [(plate.width + config.border) / 2 + (thickness / 2) - (config.mountHole / 2), 0, thickness / 2] });
+  var center = 0;
+  var count = Math.floor((plate.width + config.border + config.inset - config.mountHole) / mm(inchToMetric));
 
-  this.csg = csg.subtract(apeture).subtract(plateInset).union(mount).subtract(opening).subtract(c);
+  var start = 0;
+  var isEven = count % 2 === 0;
+  start = center - Math.floor(count / 2) * mm(inchToMetric);
+
+  var csg = this.csg = csg.subtract(apeture).union(mount).subtract(plateInset).subtract(opening);
+  //even cases need center hole var yOffset = - ((plate.height + config.border) / 2) + (thickness / 2); var holeStart = [center, yOffset, -(thickness / 2)]; var holeEnd = [center, yOffset, (thickness / 2)]; var holeRadius = config.mountHole / 2; var a = CSG.cylinder({ radius: holeRadius, start: holeStart, end: holeEnd }); var b = a.clone(); var translation = new THREE.Vector3(0, -yOffset, -yOffset); b = rotate(b, new THREE.Euler(Math.PI  / 2, 0, 0, 'XYZ'), translation); this.csg = this.csg.subtract(a).subtract(b); //
+  for(var i = 0; i<=count + 1; i++) {
+    var yOffset =  - (plate.height + thickness)  / 2;
+    var holeStart = [(start + i * mm(inchToMetric)), yOffset, -(thickness)];
+    var holeEnd = [(start + i * mm(inchToMetric)), yOffset, (thickness)];
+    var holeRadius = config.mountHole / 2;
+    //console.log("yOffset: ", yOffset, " holeStart: ", holeStart, " holeEnd: ", holeEnd, " holeRadius: ", holeRadius);
+    console.log(" count: ", count, "condition: ", plate.width/2 - config.border, " holeStart[0]: ", holeStart[0]);
+    if (holeStart[0] > (- plate.width / 2 + config.border) && holeStart[0] < plate.width/2 - config.border) {
+      var a = CSG.cylinder({ radius: holeRadius, start: holeStart, end: holeEnd });
+      var b = a.clone();
+      var translation = new THREE.Vector3(0, -yOffset, -yOffset);
+      b = rotate(b, new THREE.Euler(Math.PI  / 2, 0, 0, 'XYZ'), translation);
+      this.csg = this.csg.subtract(a).subtract(b);
+    }
+  }
+
+
+
 
   this.geometry = THREE.CSG.fromCSG(this.csg);
   this.material = new THREE.MeshLambertMaterial({ color: 0xffffff, wireframe: false });
@@ -226,6 +254,40 @@ function PlateHolder(plate, config) {
   this.inset = config.inset;
   this.border = config.border;
 }
+
+function rotate(csg, rotation, translation) {
+  return THREE.CSG.toCSG(THREE.CSG.fromCSG(csg), translation, rotation);
+}
+
+/*function makeCircles(points, radius, geometry, bufferWidth) {
+  points = points.sort((a, b) => a.x - b.x);
+  var minX = points[0].x;
+  var maxX = points[points.length - 1].x;
+  var xWidth = maxX - minX;
+  
+  var fullCircleWidth = 2 * radius + bufferWidth; //width of circle AND buffer 
+  var numHoles = Math.floor(xWidth / fullCircleWidth);
+  var offset = ((xWidth / fullCircleWidth) - numHoles) * fullCircleWidth / 2; // number of holes doesn't always evenly divide xWidth, that's why we take
+  //Math.floor, but this means there will be some extra width to be apportioned. We find this width ('offset') and divide by two so we can evenly distribute on both sides
+
+  for (var i = 0; i < numHoles; i++) {
+    // you need to write placehole, it takes an x and y coordinate on a geometry and draws a circle of radius r 
+    placeHole(i * fullCircleWidth + offset, findYClosestToX(i*fullCircleWidth+offset, points), radius, geometry); 
+  }
+}
+
+//Assuming the points are ordered on x, we can find the nearest y coordinate by just finding the first point that's larger than x and 
+//using its x coordinate. This is only accurate if points is dense - otherwise you need to do some averaging scheme
+function findYClosestToX(x, points) {
+  for (var i = 0; i < points.length; i++) {
+    if (points[i] >= x) {
+      return points[i].y;
+    }
+  }
+}*/
+
+
+
 
 var save = document.createElement('button');
 save.innerHTML = 'Save';
